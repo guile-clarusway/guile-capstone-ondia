@@ -79,31 +79,30 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'cblog.wsgi.application'
 
-def get_ssm_parameters():
-    ssm = boto3.client('ssm', region_name='us-east-1')
+AWS_REGION = config("AWS_REGION", default="us-east-1")
 
-    # AWS SSM Parametr define
-    username_param = ssm.get_parameter(Name="/guile/capstone/username", WithDecryption=True)
-    password_param = ssm.get_parameter(Name="/guile/capstone/password", WithDecryption=True)
+ssm = boto3.client("ssm", region_name=AWS_REGION)
 
 
-    # Parametre retrieve
-    username = username_param['Parameter']['Value']
-    password = password_param['Parameter']['Value']
+def get_ssm_parameter(name):
+    response = ssm.get_parameter(
+        Name=name,
+        WithDecryption=True
+    )
+    return response["Parameter"]["Value"]
 
-    return username, password
 
-# SSM put
-db_username, db_password = get_ssm_parameters()
+db_username = get_ssm_parameter("/guile/capstone/username")
+db_password = get_ssm_parameter("/guile/capstone/password")
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'ondia',
-        'USER': db_username,
-        'PASSWORD': db_password,
-        'HOST': 'aws-capstone-rds.cbanmzptkrzf.us-east-1.rds.amazonaws.com',
-        'PORT': '3306',
+    "default": {
+        "ENGINE": "django.db.backends.mysql",
+        "NAME": config("DB_NAME", default="ondia"),
+        "USER": db_username,
+        "PASSWORD": db_password,
+        "HOST": config("DB_HOST"),
+        "PORT": config("DB_PORT", default="3306"),
     }
 }
 
@@ -155,17 +154,45 @@ LOGIN_REDIRECT_URL = "blog:list"
 
 LOGIN_URL = "login"
 
+AWS_STORAGE_BUCKET_NAME = config(
+    "AWS_STORAGE_BUCKET_NAME",
+    default="awscapstonesguilesblog"
+)
 
-AWS_STORAGE_BUCKET_NAME = 'awscapstonesguileblog' # please enter your s3 bucket name
-AWS_S3_CUSTOM_DOMAIN = '%s.s3.amazonaws.com' % AWS_STORAGE_BUCKET_NAME
-AWS_S3_REGION_NAME = "us-east-1" # please enter your s3 region 
-AWS_DEFAULT_ACL = 'public-read'
+AWS_S3_REGION_NAME = AWS_REGION
+
+AWS_S3_CUSTOM_DOMAIN = (
+    f"{AWS_STORAGE_BUCKET_NAME}.s3."
+    f"{AWS_S3_REGION_NAME}.amazonaws.com"
+)
+
+# No ACLs
+AWS_DEFAULT_ACL = None
+
+# Public object URLs through the bucket policy
+AWS_QUERYSTRING_AUTH = False
+
+AWS_S3_FILE_OVERWRITE = False
+
+STATIC_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/static/"
+MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/media/"
 
 AWS_LOCATION = 'static'
 STATICFILES_DIRS = [
     os.path.join(BASE_DIR, 'static'),
 ]
 
+STORAGES = {
+    "default": {
+        "BACKEND": "cblog.storages.MediaStore",
+    },
+    "staticfiles": {
+        "BACKEND": "storages.backends.s3.S3Storage",
+        "OPTIONS": {
+            "location": "static",
+        },
+    },
+}
+
 STATIC_URL = 'https://%s/%s/' % (AWS_S3_CUSTOM_DOMAIN, AWS_LOCATION)
-STATICFILES_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
-DEFAULT_FILE_STORAGE = 'cblog.storages.MediaStore'
+
